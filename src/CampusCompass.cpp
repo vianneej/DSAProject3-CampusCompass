@@ -1,5 +1,7 @@
 #include "CampusCompass.h"
-
+#include <fstream>
+#include <sstream>
+#include <iostream>
 #include <string>
 
 using namespace std;
@@ -9,6 +11,14 @@ CampusCompass::CampusCompass() {
 }
 
 bool CampusCompass::ParseCSV(const string &edges_filepath, const string &classes_filepath) {
+    ifstream edgesFile(edges_filepath);
+    ifstream classesFile(classes_filepath);
+
+    if (!edgesFile.is_open() || !classesFile.is_open()) {
+        return false;
+    }
+    string line;
+
     // return boolean based on whether parsing was successful or not
     return true;
 }
