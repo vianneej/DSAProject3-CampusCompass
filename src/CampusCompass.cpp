@@ -2,12 +2,17 @@
 #include <fstream>
 #include <sstream>
 #include <iostream>
-#include <string>
+#include <queue>
+#include <limits>
+#include <unordered_set>
 
 using namespace std;
 
 CampusCompass::CampusCompass() {
-    // initialize your object
+    
+    graph.clear();
+    class_map.clear();
+    students.clear();
 }
 
 bool CampusCompass::ParseCSV(const string &edges_filepath, const string &classes_filepath) {
@@ -19,14 +24,331 @@ bool CampusCompass::ParseCSV(const string &edges_filepath, const string &classes
     }
     string line;
 
-    // return boolean based on whether parsing was successful or not
+    getline(edgesFile, line);
+    while (getline(edgesFile, line)) {
+        stringstream ss(line);
+        string id1, id2, name1, name2, time;
+
+        getline(ss, id1, ',');
+        getline(ss, id2, ',');
+        getline(ss, name1, ',');
+        getline(ss, name2, ',');
+        getline(ss, time, ',');
+
+        int u = stoi(id1);
+        int v = stoi(id2);
+        int w = stoi(time);
+
+        graph[u].push_back({v, w, false});
+        graph[v].push_back({u, w, false});
+    }
+
+    // load classes
+    getline(classesFile, line);
+    while (getline(classesFile, line)) {
+        stringstream ss(line);
+        string code, loc, start, end;
+
+        getline(ss, code, ',');
+        getline(ss, loc, ',');
+        getline(ss, start, ',');
+        getline(ss, end, ',');
+
+        class_map[code] = {code, stoi(loc), start, end};
+    }
+
+    return true;
+}
+
+bool CampusCompass::isValidUFID(const string &ufid) {
+    if (ufid.size() != 8) return false;
+    for (char c : ufid) if (!isdigit(c)) return false;
+    return true;
+}
+
+bool CampusCompass::isValidName(const string &name) {
+    for (char c : name) {
+        if (!(isalpha(c) || c == ' ')) return false;
+    }
+    return true;
+}
+
+bool CampusCompass::isValidClassCode(const string &class_code) {
+    if (class_code.size() != 7) return false;
+    for (int i = 0; i < 3; i++) if (!isupper(class_code[i])) return false;
+    for (int i = 3; i < 7; i++) if (!isdigit(class_code[i])) return false;
+    return true;
+}
+
+bool CampusCompass::dfs(int start, int target, unordered_set<int>& visited) {
+    if (start == target) return true;
+    visited.insert(start);
+
+    for (auto &e : graph[start]) {
+        if (!e.closed && !visited.count(e.to)) {
+            if (dfs(e.to, target, visited)) return true;
+        }
+    }
+    return false;
+}
+
+int CampusCompass::dijkstra(int start, int target) {
+    unordered_map<int,int> dist;
+    for (auto &p : graph) dist[p.first] = INT_MAX;
+
+    priority_queue<pair<int,int>, vector<pair<int,int>>, greater<>> pq;
+    dist[start] = 0;
+    pq.push({0, start});
+
+    while (!pq.empty()) {
+        auto [d,u] = pq.top();
+        pq.pop();
+
+        if (u == target) return d;
+
+        for (auto &e : graph[u]) {
+            if (e.closed) continue;
+            if (d + e.weight < dist[e.to]) {
+                dist[e.to] = d + e.weight;
+                pq.push({dist[e.to], e.to});
+            }
+        }
+    }
+    return -1;
+}
+
+bool CampusCompass::edgeExists(int start, int target) {
+    for (auto &e : graph[start]) {
+        if (e.to == target) return true;
+    }
+    return false;
+}
+
+bool CampusCompass::isEdgeClosed(int start, int target) {
+    for (auto &e : graph[start]) {
+        if (e.to == target) return e.closed;
+    }
+    return false;
+}
+
+bool CampusCompass::toggleEdgde(int start, int target) {
+    for (auto &e : graph[start]) {
+        if (e.to == target) e.closed = !e.closed;
+    }
+    for (auto &e : graph[target]) {
+        if (e.to == start) e.closed = !e.closed;
+    }
     return true;
 }
 
 bool CampusCompass::ParseCommand(const string &command) {
-    // do whatever regex you need to parse validity
-    // hint: return a boolean for validation when testing. For example:
-    bool is_valid = true; // replace with your actual validity checking
+    bool is_valid = true;
 
-    return is_valid;
+    stringstream ss(command);
+    string cmd;
+    ss >> cmd;
+
+    if (cmd == "insert") {
+        size_t q1 = command.find('"');
+        size_t q2 = command.find('"', q1 + 1);
+
+        if (q1 == string::npos || q2 == string::npos) {
+            cout << "unsuccessful\n";
+            return false;
+        }
+
+        string name = command.substr(q1 + 1, q2 - q1 - 1);
+        string rest = command.substr(q2 + 1);
+        stringstream rs(rest);
+
+        string ufid;
+        int residence, n;
+        rs >> ufid >> residence >> n;
+
+        vector<string> codes;
+        string c;
+        while (rs >> c) codes.push_back(c);
+
+        if (!isValidUFID(ufid) || !isValidName(name) || codes.size() != n || n < 1 || n > 6) {
+            cout << "unsuccessful\n";
+            return false;
+        }
+
+        if (students.count(ufid)) {
+            cout << "unsuccessful\n";
+            return false;
+        }
+
+        for (auto &code : codes) {
+            if (!isValidClassCode(code) || !class_map.count(code)) {
+                cout << "unsuccessful\n";
+                return false;
+            }
+        }
+
+        StudentInformation s;
+        s.name = name;
+        s.ufid = ufid;
+        s.residenceID = residence;
+        s.classes.insert(codes.begin(), codes.end());
+
+        students[ufid] = s;
+
+        cout << "successful\n";
+        return true;
+    }
+
+    // remove a student
+    else if (cmd == "remove") {
+        string ufid;
+        ss >> ufid;
+
+        if (!students.count(ufid)) {
+            cout << "unsuccessful\n";
+            return false;
+        }
+
+        students.erase(ufid);
+        cout << "successful\n";
+        return true;
+    }
+
+    // drop class
+    else if (cmd == "dropClass") {
+        string ufid, code;
+        ss >> ufid >> code;
+
+        if (!students.count(ufid) || !students[ufid].classes.count(code)) {
+            cout << "unsuccessful\n";
+            return false;
+        }
+
+        students[ufid].classes.erase(code);
+
+        if (students[ufid].classes.empty()) {
+            students.erase(ufid);
+        }
+
+        cout << "successful\n";
+        return true;
+    }
+    else if (cmd == "replaceClass") {
+        string ufid, oldC, newC;
+        ss >> ufid >> oldC >> newC;
+
+        if (!students.count(ufid) || !class_map.count(newC)) {
+            cout << "unsuccessful\n";
+            return false;
+        }
+
+        auto &s = students[ufid];
+
+        if (!s.classes.count(oldC) || s.classes.count(newC)) {
+            cout << "unsuccessful\n";
+            return false;
+        }
+
+        s.classes.erase(oldC);
+        s.classes.insert(newC);
+
+        cout << "successful\n";
+        return true;
+    }
+
+    else if (cmd == "removeClass") {
+        string code;
+        ss >> code;
+
+        if (!class_map.count(code)) {
+            cout << "unsuccessful\n";
+            return false;
+        }
+
+        int count = 0;
+        vector<string> removeList;
+
+        for (auto &p : students) {
+            if (p.second.classes.count(code)) {
+                p.second.classes.erase(code);
+                count++;
+
+                if (p.second.classes.empty()) {
+                    removeList.push_back(p.first);
+                }
+            }
+        }
+
+        for (auto &id : removeList) students.erase(id);
+
+        if (count == 0) {
+            cout << "unsuccessful\n";
+            return false;
+        }
+
+        cout << count << "\n";
+        return true;
+    }
+
+    // checking edge status
+    else if (cmd == "checkEdgeStatus") {
+        int u, v;
+        ss >> u >> v;
+
+        if (!edgeExists(u, v)) cout << "DNE\n";
+        else if (isEdgeClosed(u, v)) cout << "closed\n";
+        else cout << "open\n";
+
+        return true;
+    }
+
+    // toggle edge closure
+    else if (cmd == "toggleEdgesClosure") {
+        int n;
+        ss >> n;
+
+        for (int i = 0; i < n; i++) {
+            int u, v;
+            ss >> u >> v;
+            toggleEdgde(u, v);
+        }
+
+        cout << "successful\n";
+        return true;
+    }
+
+
+    else if (cmd == "isConnected") {
+        int u, v;
+        ss >> u >> v;
+
+        unordered_set<int> visited;
+        if (dfs(u, v, visited)) cout << "successful\n";
+        else cout << "unsuccessful\n";
+
+        return true;
+    }
+
+    // find shortest path for each class and print
+    else if (cmd == "printShortestEdges") {
+        string ufid;
+        ss >> ufid;
+
+        if (!students.count(ufid)) {
+            cout << "unsuccessful\n";
+            return false;
+        }
+
+        auto &s = students[ufid];
+        cout << "Time For Shortest Edges: " << s.name << "\n";
+
+        for (auto &code : s.classes) {
+            int dist = dijkstra(s.residenceID, class_map[code].locationID);
+            cout << code << ": " << dist << "\n";
+        }
+
+        return true;
+    }
+
+    cout << "unsuccessful\n";
+    return false;
 }

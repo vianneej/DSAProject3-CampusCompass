@@ -22,4 +22,5 @@ int main() {
         // parse your commands however you see fit
         compass.ParseCommand(command);
     }
+    return 0;
 }
