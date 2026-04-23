@@ -142,6 +142,42 @@ bool CampusCompass::toggleEdgde(int start, int target) {
     return true;
 }
 
+int CampusCompass::studentZoneCost(int residence, set<int>& locations) {
+    // Use Prim's algorithm to find MST cost connecting residence to all locations
+    set<int> inMST;
+    int totalCost = 0;
+    
+    inMST.insert(residence);
+    
+    // Track all locations we need to reach
+    set<int> locationsToReach = locations;
+    locationsToReach.insert(residence);
+    
+    while (inMST.size() < locationsToReach.size()) {
+        int minEdgeWeight = INT_MAX;
+        int nextNode = -1;
+        
+        // Find minimum edge connecting a node in MST to a node outside MST
+        for (int node : inMST) {
+            for (auto &edge : graph[node]) {
+                if (!edge.closed && !inMST.count(edge.to) && locationsToReach.count(edge.to)) {
+                    if (edge.weight < minEdgeWeight) {
+                        minEdgeWeight = edge.weight;
+                        nextNode = edge.to;
+                    }
+                }
+            }
+        }
+        
+        if (nextNode == -1) return -1; // Can't reach all locations
+        
+        inMST.insert(nextNode);
+        totalCost += minEdgeWeight;
+    }
+    
+    return totalCost;
+}
+
 bool CampusCompass::ParseCommand(const string &command) {
     bool is_valid = true;
 
@@ -361,18 +397,20 @@ bool CampusCompass::ParseCommand(const string &command) {
         }
 
         auto &s = students[ufid];
-        int totalCost = 0;
-
+        set<int> classLocations;
+        
         for (auto &code : s.classes) {
-            int dist = dijkstra(s.residenceID, class_map[code].locationID);
-            if (dist == -1) {
-                cout << "unsuccessful\n";
-                return false;
-            }
-            totalCost += dist;
+            classLocations.insert(class_map[code].locationID);
+        }
+        
+        int cost = studentZoneCost(s.residenceID, classLocations);
+        
+        if (cost == -1) {
+            cout << "unsuccessful\n";
+            return false;
         }
 
-        cout << "Student Zone Cost For " << s.name << ": " << totalCost << "\n";
+        cout << "Student Zone Cost For " << s.name << ": " << cost << "\n";
         return true;
     }
 
