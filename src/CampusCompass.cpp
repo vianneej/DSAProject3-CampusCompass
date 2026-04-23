@@ -350,6 +350,32 @@ bool CampusCompass::ParseCommand(const string &command) {
         return true;
     }
 
+    // calculate and print the total student zone cost
+    else if (cmd == "printStudentZone") {
+        string ufid;
+        ss >> ufid;
+
+        if (!students.count(ufid)) {
+            cout << "unsuccessful\n";
+            return false;
+        }
+
+        auto &s = students[ufid];
+        int totalCost = 0;
+
+        for (auto &code : s.classes) {
+            int dist = dijkstra(s.residenceID, class_map[code].locationID);
+            if (dist == -1) {
+                cout << "unsuccessful\n";
+                return false;
+            }
+            totalCost += dist;
+        }
+
+        cout << "Student Zone Cost For " << s.name << ": " << totalCost << "\n";
+        return true;
+    }
+
     cout << "unsuccessful\n";
     return false;
 }
