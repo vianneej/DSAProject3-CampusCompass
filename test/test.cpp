@@ -4,7 +4,7 @@
 #include <sstream>
 #include <iostream>
 using namespace std;
-/*
+
 string runCommands(string input) {
     CampusCompass c;
     c.ParseCSV("data/edges.csv", "data/classes.csv");
@@ -32,7 +32,7 @@ string runCommands(string input) {
 
     return out.str();
 }
-
+/*
 TEST_CASE("1:Invalid Commands Test", "[invalid]") {
     string input = R"(5
 insert "A11y" 45679999 1 1 COP3530
