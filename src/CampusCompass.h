@@ -40,7 +40,7 @@ private:
     bool edgeExists(int start, int target);
     bool isEdgeClosed(int start, int target);
     bool toggleEdgde(int start, int target);
-    int studentZoneCost(int residence, set<int>& locations);
+    int studentZoneCost(int residence, set<int>& classLocations);
    
 public:
     CampusCompass(); 

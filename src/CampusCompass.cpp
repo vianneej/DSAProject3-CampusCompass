@@ -6,6 +6,7 @@
 #include <limits>
 #include <climits>
 #include <unordered_set>
+#include <map>
 
 using namespace std;
 
@@ -143,33 +144,87 @@ bool CampusCompass::toggleEdgde(int start, int target) {
 }
 
 int CampusCompass::studentZoneCost(int residence, set<int>& locations) {
-    // Use Prim's algorithm to find MST cost connecting residence to all locations
+    // Step 1: Find all vertices that appear in shortest paths
+    unordered_set<int> allVertices;
+    allVertices.insert(residence);
+    
+    // Run modified Dijkstra to get parents (for path reconstruction)
+    unordered_map<int, int> parent;
+    unordered_map<int, int> dist;
+    
+    for (auto &p : graph) dist[p.first] = INT_MAX;
+    dist[residence] = 0;
+    
+    priority_queue<pair<int,int>, vector<pair<int,int>>, greater<>> pq;
+    pq.push({0, residence});
+    
+    while (!pq.empty()) {
+        auto [d, u] = pq.top();
+        pq.pop();
+        
+        if (d > dist[u]) continue;
+        
+        for (auto &e : graph[u]) {
+            if (e.closed) continue;
+            if (d + e.weight < dist[e.to]) {
+                dist[e.to] = d + e.weight;
+                parent[e.to] = u;
+                pq.push({dist[e.to], e.to});
+            }
+        }
+    }
+    
+    // Collect all vertices in shortest paths to each class location
+    for (int loc : locations) {
+        if (dist[loc] == INT_MAX) return -1; // Can't reach
+        
+        int current = loc;
+        while (current != residence) {
+            allVertices.insert(current);
+            current = parent[current];
+        }
+    }
+    
+    // Step 2: Build sub-graph with only vertices in allVertices
+    map<pair<int,int>, int> subgraphEdges; // edge weight lookup
+    
+    for (int u : allVertices) {
+        for (auto &e : graph[u]) {
+            if (allVertices.count(e.to) && !e.closed) {
+                int minKey = min(u, e.to);
+                int maxKey = max(u, e.to);
+                pair<int,int> edge = {minKey, maxKey};
+                
+                if (subgraphEdges.find(edge) == subgraphEdges.end()) {
+                    subgraphEdges[edge] = e.weight;
+                } else {
+                    subgraphEdges[edge] = min(subgraphEdges[edge], e.weight);
+                }
+            }
+        }
+    }
+    
+    // Step 3: Find MST using Prim's algorithm on sub-graph
     set<int> inMST;
     int totalCost = 0;
-    
     inMST.insert(residence);
     
-    // Track all locations we need to reach
-    set<int> locationsToReach = locations;
-    locationsToReach.insert(residence);
-    
-    while (inMST.size() < locationsToReach.size()) {
+    while (inMST.size() < allVertices.size()) {
         int minEdgeWeight = INT_MAX;
         int nextNode = -1;
         
-        // Find minimum edge connecting a node in MST to a node outside MST
-        for (int node : inMST) {
-            for (auto &edge : graph[node]) {
-                if (!edge.closed && !inMST.count(edge.to) && locationsToReach.count(edge.to)) {
-                    if (edge.weight < minEdgeWeight) {
-                        minEdgeWeight = edge.weight;
-                        nextNode = edge.to;
+        for (int u : inMST) {
+            for (auto &e : graph[u]) {
+                if (!e.closed && allVertices.count(e.to) && !inMST.count(e.to)) {
+                    if (e.weight < minEdgeWeight) {
+                        minEdgeWeight = e.weight;
+                        nextNode = e.to;
                     }
                 }
             }
         }
         
-        if (nextNode == -1) return -1; // Can't reach all locations
+        if (nextNode == -1) return -1;
         
         inMST.insert(nextNode);
         totalCost += minEdgeWeight;
