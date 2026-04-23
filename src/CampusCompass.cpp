@@ -10,13 +10,14 @@
 
 using namespace std;
 
+// Constructor - initialize all data structures
 CampusCompass::CampusCompass() {
-    
     graph.clear();
     class_map.clear();
     students.clear();
 }
 
+// Load campus data from CSV files (edges and classes)
 bool CampusCompass::ParseCSV(const string &edges_filepath, const string &classes_filepath) {
     ifstream edgesFile(edges_filepath);
     ifstream classesFile(classes_filepath);
@@ -24,9 +25,11 @@ bool CampusCompass::ParseCSV(const string &edges_filepath, const string &classes
     if (!edgesFile.is_open() || !classesFile.is_open()) {
         return false;
     }
+    
     string line;
 
-    getline(edgesFile, line);
+    // Read edges: location pairs with travel times
+    getline(edgesFile, line); // skip header
     while (getline(edgesFile, line)) {
         stringstream ss(line);
         string id1, id2, name1, name2, time;
@@ -41,12 +44,13 @@ bool CampusCompass::ParseCSV(const string &edges_filepath, const string &classes
         int v = stoi(id2);
         int w = stoi(time);
 
+        // Add bidirectional edges
         graph[u].push_back({v, w, false});
         graph[v].push_back({u, w, false});
     }
 
-    // load classes
-    getline(classesFile, line);
+    // Read classes: class codes mapped to locations and times
+    getline(classesFile, line); // skip header
     while (getline(classesFile, line)) {
         stringstream ss(line);
         string code, loc, start, end;
@@ -62,12 +66,14 @@ bool CampusCompass::ParseCSV(const string &edges_filepath, const string &classes
     return true;
 }
 
+// Validate UFID: must be exactly 8 digits
 bool CampusCompass::isValidUFID(const string &ufid) {
     if (ufid.size() != 8) return false;
     for (char c : ufid) if (!isdigit(c)) return false;
     return true;
 }
 
+// Validate name: only letters and spaces allowed
 bool CampusCompass::isValidName(const string &name) {
     for (char c : name) {
         if (!(isalpha(c) || c == ' ')) return false;
@@ -75,6 +81,7 @@ bool CampusCompass::isValidName(const string &name) {
     return true;
 }
 
+// Validate class code: 3 uppercase letters followed by 4 digits
 bool CampusCompass::isValidClassCode(const string &class_code) {
     if (class_code.size() != 7) return false;
     for (int i = 0; i < 3; i++) if (!isupper(class_code[i])) return false;
@@ -82,6 +89,7 @@ bool CampusCompass::isValidClassCode(const string &class_code) {
     return true;
 }
 
+// DFS to check if there's a path between two nodes (ignoring closed edges)
 bool CampusCompass::dfs(int start, int target, unordered_set<int>& visited) {
     if (start == target) return true;
     visited.insert(start);
@@ -94,8 +102,9 @@ bool CampusCompass::dfs(int start, int target, unordered_set<int>& visited) {
     return false;
 }
 
+// Dijkstra's algorithm: find shortest path from start to target
 int CampusCompass::dijkstra(int start, int target) {
-    unordered_map<int,int> dist;
+    unordered_map<int, int> dist;
     for (auto &p : graph) dist[p.first] = INT_MAX;
 
     priority_queue<pair<int,int>, vector<pair<int,int>>, greater<>> pq;
@@ -103,22 +112,23 @@ int CampusCompass::dijkstra(int start, int target) {
     pq.push({0, start});
 
     while (!pq.empty()) {
-        auto [d,u] = pq.top();
+        auto [d, u] = pq.top();
         pq.pop();
 
         if (u == target) return d;
 
         for (auto &e : graph[u]) {
-            if (e.closed) continue;
+            if (e.closed) continue; // skip closed edges
             if (d + e.weight < dist[e.to]) {
                 dist[e.to] = d + e.weight;
                 pq.push({dist[e.to], e.to});
             }
         }
     }
-    return -1;
+    return -1; // unreachable
 }
 
+// Check if an edge exists between two nodes
 bool CampusCompass::edgeExists(int start, int target) {
     for (auto &e : graph[start]) {
         if (e.to == target) return true;
@@ -126,6 +136,7 @@ bool CampusCompass::edgeExists(int start, int target) {
     return false;
 }
 
+// Check if an edge is currently closed
 bool CampusCompass::isEdgeClosed(int start, int target) {
     for (auto &e : graph[start]) {
         if (e.to == target) return e.closed;
@@ -133,6 +144,7 @@ bool CampusCompass::isEdgeClosed(int start, int target) {
     return false;
 }
 
+// Toggle an edge's closure status (open/closed)
 bool CampusCompass::toggleEdgde(int start, int target) {
     for (auto &e : graph[start]) {
         if (e.to == target) e.closed = !e.closed;
@@ -143,12 +155,14 @@ bool CampusCompass::toggleEdgde(int start, int target) {
     return true;
 }
 
+// Calculate the minimum cost to connect a student's residence to all their class locations
+// Uses Dijkstra to find shortest paths, then builds an MST of those paths
 int CampusCompass::studentZoneCost(int residence, set<int>& locations) {
-    // Step 1: Find all vertices that appear in shortest paths
+    // Step 1: Find all vertices that appear in shortest paths to class locations
     unordered_set<int> allVertices;
     allVertices.insert(residence);
     
-    // Run modified Dijkstra to get parents (for path reconstruction)
+    // Run Dijkstra with parent tracking for path reconstruction
     unordered_map<int, int> parent;
     unordered_map<int, int> dist;
     
@@ -174,9 +188,9 @@ int CampusCompass::studentZoneCost(int residence, set<int>& locations) {
         }
     }
     
-    // Collect all vertices in shortest paths to each class location
+    // Backtrack through shortest paths to collect all intermediate vertices
     for (int loc : locations) {
-        if (dist[loc] == INT_MAX) return -1; // Can't reach
+        if (dist[loc] == INT_MAX) return -1; // Can't reach this class
         
         int current = loc;
         while (current != residence) {
@@ -185,26 +199,8 @@ int CampusCompass::studentZoneCost(int residence, set<int>& locations) {
         }
     }
     
-    // Step 2: Build sub-graph with only vertices in allVertices
-    map<pair<int,int>, int> subgraphEdges; // edge weight lookup
-    
-    for (int u : allVertices) {
-        for (auto &e : graph[u]) {
-            if (allVertices.count(e.to) && !e.closed) {
-                int minKey = min(u, e.to);
-                int maxKey = max(u, e.to);
-                pair<int,int> edge = {minKey, maxKey};
-                
-                if (subgraphEdges.find(edge) == subgraphEdges.end()) {
-                    subgraphEdges[edge] = e.weight;
-                } else {
-                    subgraphEdges[edge] = min(subgraphEdges[edge], e.weight);
-                }
-            }
-        }
-    }
-    
-    // Step 3: Find MST using Prim's algorithm on sub-graph
+    // Step 2: Build MST using only vertices and edges from the shortest paths
+    // This eliminates redundant edges and gives us the minimum spanning tree
     set<int> inMST;
     int totalCost = 0;
     inMST.insert(residence);
@@ -213,6 +209,7 @@ int CampusCompass::studentZoneCost(int residence, set<int>& locations) {
         int minEdgeWeight = INT_MAX;
         int nextNode = -1;
         
+        // Find the cheapest edge from MST to a non-MST vertex
         for (int u : inMST) {
             for (auto &e : graph[u]) {
                 if (!e.closed && allVertices.count(e.to) && !inMST.count(e.to)) {
@@ -224,7 +221,7 @@ int CampusCompass::studentZoneCost(int residence, set<int>& locations) {
             }
         }
         
-        if (nextNode == -1) return -1;
+        if (nextNode == -1) return -1; // Shouldn't happen if shortest paths exist
         
         inMST.insert(nextNode);
         totalCost += minEdgeWeight;
@@ -233,14 +230,15 @@ int CampusCompass::studentZoneCost(int residence, set<int>& locations) {
     return totalCost;
 }
 
+// Main command parser - handles all student and campus management commands
 bool CampusCompass::ParseCommand(const string &command) {
-    bool is_valid = true;
-
     stringstream ss(command);
     string cmd;
     ss >> cmd;
 
+    // add a new student
     if (cmd == "insert") {
+        // Extract name from quotes
         size_t q1 = command.find('"');
         size_t q2 = command.find('"', q1 + 1);
 
@@ -261,16 +259,18 @@ bool CampusCompass::ParseCommand(const string &command) {
         string c;
         while (rs >> c) codes.push_back(c);
 
+        // Validate all inputs
         if (!isValidUFID(ufid) || !isValidName(name) || codes.size() != n || n < 1 || n > 6) {
             cout << "unsuccessful\n";
             return false;
         }
 
-        if (students.count(ufid)) {
+        if (students.count(ufid)) { // UFID must be unique
             cout << "unsuccessful\n";
             return false;
         }
 
+        // Validate all class codes
         for (auto &code : codes) {
             if (!isValidClassCode(code) || !class_map.count(code)) {
                 cout << "unsuccessful\n";
@@ -278,6 +278,7 @@ bool CampusCompass::ParseCommand(const string &command) {
             }
         }
 
+        // Add the student
         StudentInformation s;
         s.name = name;
         s.ufid = ufid;
@@ -290,7 +291,7 @@ bool CampusCompass::ParseCommand(const string &command) {
         return true;
     }
 
-    // remove a student
+    // delete a student
     else if (cmd == "remove") {
         string ufid;
         ss >> ufid;
@@ -305,7 +306,7 @@ bool CampusCompass::ParseCommand(const string &command) {
         return true;
     }
 
-    // drop class
+    // remove a specific class from a student
     else if (cmd == "dropClass") {
         string ufid, code;
         ss >> ufid >> code;
@@ -317,6 +318,7 @@ bool CampusCompass::ParseCommand(const string &command) {
 
         students[ufid].classes.erase(code);
 
+        // If student has no classes left, remove them entirely
         if (students[ufid].classes.empty()) {
             students.erase(ufid);
         }
@@ -324,6 +326,8 @@ bool CampusCompass::ParseCommand(const string &command) {
         cout << "successful\n";
         return true;
     }
+
+    // swap one class for another
     else if (cmd == "replaceClass") {
         string ufid, oldC, newC;
         ss >> ufid >> oldC >> newC;
@@ -347,6 +351,7 @@ bool CampusCompass::ParseCommand(const string &command) {
         return true;
     }
 
+    // remove a class from all students
     else if (cmd == "removeClass") {
         string code;
         ss >> code;
@@ -359,11 +364,13 @@ bool CampusCompass::ParseCommand(const string &command) {
         int count = 0;
         vector<string> removeList;
 
+        // Remove the class from all students
         for (auto &p : students) {
             if (p.second.classes.count(code)) {
                 p.second.classes.erase(code);
                 count++;
 
+                // Remove student if they have no classes left
                 if (p.second.classes.empty()) {
                     removeList.push_back(p.first);
                 }
@@ -377,11 +384,11 @@ bool CampusCompass::ParseCommand(const string &command) {
             return false;
         }
 
-        cout << count << "\n";
+        cout << count << "\n"; // Print number of students affected
         return true;
     }
 
-    // checking edge status
+    // check if a path is open/closed/dne
     else if (cmd == "checkEdgeStatus") {
         int u, v;
         ss >> u >> v;
@@ -393,7 +400,7 @@ bool CampusCompass::ParseCommand(const string &command) {
         return true;
     }
 
-    // toggle edge closure
+    // open/close paths
     else if (cmd == "toggleEdgesClosure") {
         int n;
         ss >> n;
@@ -408,7 +415,7 @@ bool CampusCompass::ParseCommand(const string &command) {
         return true;
     }
 
-
+    // check if two locations can be reached
     else if (cmd == "isConnected") {
         int u, v;
         ss >> u >> v;
@@ -420,7 +427,7 @@ bool CampusCompass::ParseCommand(const string &command) {
         return true;
     }
 
-    // find shortest path for each class and print
+    // show travel time to each student's class
     else if (cmd == "printShortestEdges") {
         string ufid;
         ss >> ufid;
@@ -441,7 +448,7 @@ bool CampusCompass::ParseCommand(const string &command) {
         return true;
     }
 
-    // calculate and print the total student zone cost
+    // calculate min spanning tree cost for student's zone
     else if (cmd == "printStudentZone") {
         string ufid;
         ss >> ufid;
@@ -469,6 +476,7 @@ bool CampusCompass::ParseCommand(const string &command) {
         return true;
     }
 
+    // Unknown command
     cout << "unsuccessful\n";
     return false;
 }
